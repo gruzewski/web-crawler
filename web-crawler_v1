@@ -1,0 +1,155 @@
+#!/bin/bash
+
+# Simple scraping tool for generating logs.
+# Code style based on http://google-styleguide.googlecode.com/svn/trunk/shell.xml?showone=Case_statement#Case_statement
+
+#####################################  Global variables. ############################################
+FILE_PATH=''
+OUTPUT_PATH='./website.map'
+declare -a WEBSITES_TABLE
+declare -a IP_TABLE
+
+#####################################  Functions. ############################################
+
+#######################################
+# Displays how to use the script.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+usage()
+{
+cat << EOF
+usage: $0 options
+
+This script checks what is the ip address, delay, how much data was sent from certain websites.
+
+OPTIONS:
+   -h      Show this message
+   -f      Path to the file with websites list
+   -u      Url of the site that you want to crawl
+   -o      Output file path
+EOF
+}
+
+#######################################
+# Error dealing function.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   String to STDERR
+#######################################
+err() {
+  echo "[$(date +'%Y-%m-%d %H:%M')]: $@" >&2
+}
+
+#######################################
+# Function reading websites from the file.
+# Globals:
+#   FILE_PATH, WEBSITES_TABLE
+# Arguments:
+#   None
+# Returns:
+#   Array of strings WEBSITES_TABLE
+#######################################
+read_file() {
+  readarray WEBSITES_TABLE < ${FILE_PATH}
+  readonly WEBSITES_TABLE
+}
+
+#######################################
+# Resolves websites to IPs
+# Globals:
+#   WEBSITES_TABLE
+# Arguments:
+#   None
+# Returns:
+#   Array of IP addresses
+#######################################
+get_ip() {
+  for website in "${!WEBSITES_TABLE[@]}"; do
+    IP_TABLE[website]=$(dig +short ${WEBSITES_TABLE[website]} | head -1)
+  done
+}
+
+#######################################
+# Saves everything to the file. Wget options:
+#  --server-response = enable HTTP respond code
+#  --spider = pages are not download
+#  -r = enable recursive mode
+#  -nd = no directory created
+#  -A = download only specified files
+#  -D = search only specified domain
+# Globals:
+#   WEBSITES_TABLE, IP_TABLES, OUTPUT_PATH
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+compute_and_save() {
+  for website in "${!WEBSITES_TABLE[@]}"; do
+    echo $IP_TABLE[website] " " >> $OUTPUT_PATH
+    wget --server-response --spider -r -nd -A aspx,htm -D financialexpress.net ${WEBSITES_TABLE[website]} 2>&1 | awk '/^(  HTTP|  Content-Length|--)/{if ($3 == "OK" || $3 == "") {print $2} else {print $3}}' | paste - - - | uniq > $OUTPUT_PATH
+
+    get_ip
+  done
+}
+
+#####################################  Operands. ############################################
+
+# Checks if any parameters were given
+if [[ $# == 0 ]]; then
+  err "No options were given. Please see the usage (-h)"
+  exit 1
+fi
+
+while getopts ':hf:u:o:' opt; do
+  case ${opt} in
+    # Help
+    h)
+      usage
+      ;;
+    # Read url from a file
+    f)
+      if [ -f $OPTARG ]; then
+        FILE_PATH=$OPTARG
+        read_file
+      else
+        err "File $OPTARG doesn't exist"
+        exit 1
+      fi
+      ;;
+    # Read url from the console
+    u)
+      if [[ $OPTARG =~ ^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$ ]]; then
+        WEBSITES_TABLE[0]=$OPTARG
+      else
+        err "No valid url was given."
+        echo $OPTARG
+      fi
+      ;;
+    # Output file with results
+    o)
+      OUTPUT_PATH=$OPTARG
+      ;;
+    \?)
+      err "Invalid option: -$OPTARG"
+      exit 1
+      ;;
+    :)
+      err "Option -$OPTARG requires value. Please see the usage (-h)"
+      exit 1
+      ;;
+  esac
+done
+readonly FILE_PATH
+readonly OUTPUT_PATH
+readonly WEBSITES_TABLE
+
+compute_and_save
